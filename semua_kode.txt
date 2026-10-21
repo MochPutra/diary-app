@@ -1,0 +1,834 @@
+
+// ===== C:\laragon\www\diary-app\src\components\DiaryCard.js =====
+
+import React from 'react';
+import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
+import { COLORS, SPACE, RADIUS, TYPO, MOODS } from '../styles/tokens';
+import { toSource } from '../utils/imageSource';
+
+export default function DiaryCard({
+  title, date, preview, moodUri, mood = 'calm', onPress, variant = 'list',
+}) {
+  const moodInfo = MOODS[mood] || MOODS.calm;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      android_ripple={{ color: COLORS.border }}
+      style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`Entri ${title} tanggal ${date}, mood ${moodInfo.label}`}
+      accessibilityHint="Ketuk untuk membuka detail entri"
+    >
+      <View
+        style={[
+          styles.card,
+          variant === 'grid' && styles.cardGrid,
+          { borderColor: moodInfo.color },
+        ]}
+      >
+        {moodUri ? (
+          <Image source={toSource(moodUri)} style={styles.mood} />
+        ) : (
+          <View style={[styles.mood, styles.moodFallback, { backgroundColor: moodInfo.color }]}>
+            <Text style={styles.moodInitial}>{title.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={styles.content}>
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={styles.date}>{date}</Text>
+          <Text style={styles.preview} numberOfLines={3} ellipsizeMode="tail">
+            {preview}
+          </Text>
+          <View style={[styles.badge, { borderColor: moodInfo.color }]}>
+            <Text style={[styles.badgeText, { color: moodInfo.color }]}>
+              {moodInfo.label}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    gap: SPACE.m,
+    padding: SPACE.m,
+    minHeight: 88,
+    borderWidth: 1.5,
+    borderRadius: RADIUS.card,
+    backgroundColor: COLORS.surface,
+  },
+  cardGrid: { minHeight: 120 },
+  mood: {
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.avatar,
+    backgroundColor: COLORS.placeholder,
+  },
+  moodFallback: { alignItems: 'center', justifyContent: 'center' },
+  moodInitial: { color: COLORS.onAccent, fontSize: TYPO.h2, fontWeight: '700' },
+  content: { flex: 1 },
+  title: { fontSize: TYPO.title, fontWeight: '700', color: COLORS.text },
+  date: { fontSize: TYPO.caption, color: COLORS.muted, marginBottom: 6 },
+  preview: { fontSize: TYPO.body, color: COLORS.text },
+  badge: {
+    alignSelf: 'flex-start',
+    marginTop: SPACE.s,
+    paddingHorizontal: SPACE.s,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderRadius: RADIUS.pill,
+  },
+  badgeText: { fontSize: TYPO.caption, fontWeight: '600' },
+});
+
+// ===== C:\laragon\www\diary-app\src\components\DiaryDetailModal.js =====
+
+import React from 'react';
+import { Modal, View, Text, Image, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLORS, SPACE, RADIUS, TYPO } from '../styles/tokens';
+import { toSource } from '../utils/imageSource';
+
+export default function DiaryDetailModal({ visible, onClose, entry }) {
+  if (!entry) return null;
+  const { title, date, body, heroUri, moodUri } = entry;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose} // tombol back Android
+    >
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView>
+          <Image source={toSource(heroUri || moodUri)} style={styles.hero} />
+          <View style={styles.content}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.date}>{date}</Text>
+            <Text style={styles.body}>{body}</Text>
+            <Pressable
+              onPress={onClose}
+              style={styles.button}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup detail entri"
+            >
+              <Text style={styles.buttonText}>Tutup</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  hero: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#ddd',
+    borderBottomLeftRadius: RADIUS.card,
+    borderBottomRightRadius: RADIUS.card,
+  },
+  content: { padding: SPACE.l, gap: SPACE.s },
+  title: { fontSize: TYPO.h2, fontWeight: '700', color: COLORS.text },
+  date: { fontSize: TYPO.caption, color: COLORS.muted, marginBottom: SPACE.s },
+  body: { fontSize: TYPO.body, color: COLORS.text, lineHeight: 20 },
+  button: {
+    marginTop: SPACE.l,
+    padding: SPACE.m,
+    minHeight: 48,
+    justifyContent: 'center',
+    borderRadius: RADIUS.card,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: TYPO.title },
+});
+
+// ===== C:\laragon\www\diary-app\src\components\EntryForm.js =====
+
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Modal, View, Text, TextInput, Pressable, ScrollView, Animated,
+  KeyboardAvoidingView, Platform, StyleSheet,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import MoodChip from './MoodChip';
+import { COLORS, SPACE, RADIUS, TYPO, MOODS, SIZE } from '../styles/tokens';
+
+const TITLE_MAX = 50;
+const BODY_MAX = 500;
+const BODY_MIN = 10;
+
+export default function EntryForm({ visible, onClose, onSubmit }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [mood, setMood] = useState('calm');
+  const [focused, setFocused] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  const shake = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setTitle('');
+      setBody('');
+      setMood('calm');
+      setSubmitted(false);
+    }
+  }, [visible]);
+
+  const titleError = title.trim().length === 0 ? 'Judul wajib diisi.' : null;
+  const bodyError =
+    body.trim().length < BODY_MIN ? `Cerita minimal ${BODY_MIN} karakter.` : null;
+  const moodInfo = MOODS[mood];
+
+  const runShake = () => {
+    Animated.sequence(
+      [10, -10, 6, -6, 0].map((v) =>
+        Animated.timing(shake, { toValue: v, duration: 50, useNativeDriver: true })
+      )
+    ).start();
+  };
+
+  const handleSave = () => {
+    setSubmitted(true);
+    if (titleError || bodyError) {
+      runShake();
+      return;
+    }
+    onSubmit({ title: title.trim(), body: body.trim(), mood });
+    onClose();
+  };
+
+  const inputStyle = (field, error) => [
+    styles.input,
+    focused === field && styles.inputFocused,
+    submitted && error && styles.inputError,
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={[styles.moodBar, { backgroundColor: moodInfo.color }]} />
+
+        <View style={styles.header}>
+          <Text style={styles.heading} accessibilityRole="header">Entri baru</Text>
+          <Pressable
+            onPress={onClose}
+            style={styles.cancel}
+            accessibilityRole="button"
+            accessibilityLabel="Batal, tutup formulir"
+          >
+            <Text style={styles.cancelText}>Batal</Text>
+          </Pressable>
+        </View>
+
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+            <View style={styles.field}>
+              <Text style={styles.label}>Judul</Text>
+              <TextInput
+                value={title}
+                onChangeText={setTitle}
+                onFocus={() => setFocused('title')}
+                onBlur={() => setFocused(null)}
+                maxLength={TITLE_MAX}
+                placeholder="Contoh: Pagi yang tenang"
+                placeholderTextColor={COLORS.muted}
+                style={inputStyle('title', titleError)}
+                accessibilityLabel="Judul entri"
+              />
+              <View style={styles.meta}>
+                <Text style={styles.error} accessibilityLiveRegion="polite">
+                  {submitted && titleError ? titleError : ' '}
+                </Text>
+                <Text style={styles.counter}>{title.length}/{TITLE_MAX}</Text>
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Cerita hari ini</Text>
+              <TextInput
+                value={body}
+                onChangeText={setBody}
+                onFocus={() => setFocused('body')}
+                onBlur={() => setFocused(null)}
+                maxLength={BODY_MAX}
+                multiline
+                textAlignVertical="top"
+                placeholder="Apa yang kamu alami hari ini?"
+                placeholderTextColor={COLORS.muted}
+                style={[...inputStyle('body', bodyError), styles.textarea]}
+                accessibilityLabel="Isi cerita entri"
+              />
+              <View style={styles.meta}>
+                <Text style={styles.error} accessibilityLiveRegion="polite">
+                  {submitted && bodyError ? bodyError : ' '}
+                </Text>
+                <Text style={[styles.counter, body.length >= BODY_MAX * 0.9 && styles.counterWarn]}>
+                  {body.length}/{BODY_MAX}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Suasana hati</Text>
+              <View style={styles.moods}>
+                {Object.entries(MOODS).map(([key, m]) => (
+                  <MoodChip
+                    key={key}
+                    label={m.label}
+                    a11yLabel={`Pilih mood ${m.label}`}
+                    color={m.color}
+                    active={mood === key}
+                    onPress={() => setMood(key)}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <Animated.View style={{ transform: [{ translateX: shake }] }}>
+              <Pressable
+                onPress={handleSave}
+                style={({ pressed }) => [
+                  styles.save,
+                  { backgroundColor: moodInfo.color },
+                  pressed && styles.savePressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Simpan entri"
+              >
+                <Text style={styles.saveText}>Simpan entri</Text>
+              </Pressable>
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  moodBar: { height: 4 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE.l,
+    paddingTop: SPACE.m,
+  },
+  heading: { fontSize: TYPO.h1, fontWeight: '700', color: COLORS.text },
+  cancel: { minHeight: SIZE.touch, minWidth: SIZE.touch, justifyContent: 'center', alignItems: 'flex-end' },
+  cancelText: { fontSize: TYPO.title, fontWeight: '600', color: COLORS.accent },
+  form: { padding: SPACE.l, gap: SPACE.m },
+  field: { gap: SPACE.xs },
+  label: { fontSize: TYPO.body, fontWeight: '600', color: COLORS.text },
+  input: {
+    minHeight: SIZE.touch,
+    paddingHorizontal: SPACE.m,
+    paddingVertical: SPACE.s,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.card,
+    fontSize: TYPO.title,
+    color: COLORS.text,
+    backgroundColor: COLORS.surface,
+  },
+  inputFocused: { borderColor: COLORS.accent, backgroundColor: COLORS.accentSoft },
+  inputError: { borderColor: COLORS.danger },
+  textarea: { minHeight: 140 },
+  meta: { flexDirection: 'row', justifyContent: 'space-between' },
+  error: { flex: 1, fontSize: TYPO.caption, color: COLORS.danger },
+  counter: { fontSize: TYPO.caption, color: COLORS.muted },
+  counterWarn: { color: COLORS.danger, fontWeight: '700' },
+  moods: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.s },
+  save: {
+    minHeight: SIZE.touch,
+    marginTop: SPACE.s,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: RADIUS.card,
+  },
+  savePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  saveText: { fontSize: TYPO.title, fontWeight: '700', color: COLORS.onAccent },
+});
+
+// ===== C:\laragon\www\diary-app\src\components\MoodChip.js =====
+
+import React from 'react';
+import { Text, Pressable, StyleSheet } from 'react-native';
+import { COLORS, SPACE, RADIUS, TYPO } from '../styles/tokens';
+
+export default function MoodChip({ label, color = COLORS.accent, active, onPress, a11yLabel }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      accessibilityLabel={a11yLabel || label}
+      style={({ pressed }) => [
+        styles.chip,
+        { borderColor: color },
+        active && { backgroundColor: color },
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.text, { color: active ? COLORS.onAccent : color }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  chip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: SPACE.l,
+    borderWidth: 1.5,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surface,
+  },
+  pressed: { opacity: 0.8, transform: [{ scale: 0.96 }] },
+  text: { fontSize: TYPO.body, fontWeight: '600' },
+});
+
+// ===== C:\laragon\www\diary-app\src\components\SearchBar.js =====
+
+import React, { useRef } from 'react';
+import { View, Text, TextInput, Pressable, ScrollView, Animated, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import MoodChip from './MoodChip';
+import { COLORS, SPACE, RADIUS, TYPO, MOODS, SIZE } from '../styles/tokens';
+
+export default function SearchBar({ value, onChangeText, mood, onMoodChange, resultCount }) {
+  const focus = useRef(new Animated.Value(0)).current;
+
+  const animateTo = (to) =>
+    Animated.timing(focus, { toValue: to, duration: 180, useNativeDriver: false }).start();
+
+  const borderColor = focus.interpolate({
+    inputRange: [0, 1],
+    outputRange: [COLORS.border, COLORS.accent],
+  });
+
+  return (
+    <View style={styles.wrap}>
+      <Animated.View style={[styles.box, { borderColor }]}>
+        <Ionicons name="search" size={20} color={COLORS.muted} />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => animateTo(1)}
+          onBlur={() => animateTo(0)}
+          placeholder="Cari judul atau isi entri"
+          placeholderTextColor={COLORS.muted}
+          style={styles.input}
+          returnKeyType="search"
+          autoCorrect={false}
+          accessibilityLabel="Cari entri diary"
+        />
+        {value.length > 0 && (
+          <Pressable
+            onPress={() => onChangeText('')}
+            hitSlop={8}
+            style={styles.clear}
+            accessibilityRole="button"
+            accessibilityLabel="Hapus pencarian"
+          >
+            <Ionicons name="close-circle" size={22} color={COLORS.muted} />
+          </Pressable>
+        )}
+      </Animated.View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.chips}
+      >
+        <MoodChip
+          label="Semua"
+          a11yLabel="Tampilkan semua mood"
+          active={mood === null}
+          onPress={() => onMoodChange(null)}
+        />
+        {Object.entries(MOODS).map(([key, m]) => (
+          <MoodChip
+            key={key}
+            label={m.label}
+            a11yLabel={`Filter mood ${m.label}`}
+            color={m.color}
+            active={mood === key}
+            onPress={() => onMoodChange(mood === key ? null : key)}
+          />
+        ))}
+      </ScrollView>
+
+      <Text style={styles.count} accessibilityLiveRegion="polite">
+        {resultCount} entri ditemukan
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { paddingHorizontal: SPACE.l, paddingTop: SPACE.m, gap: SPACE.s },
+  box: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.s,
+    minHeight: SIZE.touch,
+    paddingHorizontal: SPACE.m,
+    borderWidth: 1.5,
+    borderRadius: RADIUS.card,
+    backgroundColor: COLORS.surface,
+  },
+  input: { flex: 1, fontSize: TYPO.title, color: COLORS.text, paddingVertical: SPACE.s },
+  clear: { alignItems: 'center', justifyContent: 'center' },
+  chips: { gap: SPACE.s, paddingVertical: SPACE.xs },
+  count: { fontSize: TYPO.caption, color: COLORS.muted },
+});
+
+// ===== C:\laragon\www\diary-app\src\screens\DiaryListScreen.js =====
+
+import React, { useMemo, useState } from 'react';
+import { View, Text, Image, Pressable, StyleSheet, FlatList, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import DiaryCard from '../components/DiaryCard';
+import DiaryDetailModal from '../components/DiaryDetailModal';
+import SearchBar from '../components/SearchBar';
+import EntryForm from '../components/EntryForm';
+import { COLORS, SPACE, TYPO, RADIUS, BREAKPOINTS, SIZE } from '../styles/tokens';
+
+const DATA = [
+  {
+    id: 1, mood: 'happy',
+    title: 'Pagi yang Tenang', date: '2025-10-06',
+    preview: 'Hari ini aku bangun lebih pagi dan berjalan kaki 20 menit. Udara terasa sejuk...',
+    body: 'Hari ini aku bangun lebih pagi dan berjalan kaki 20 menit di sekitar kompleks. Udara terasa sejuk, jalanan masih sepi, dan pikiran terasa jernih. Setelah itu aku sarapan dengan santai sebelum mulai beraktivitas.',
+    moodUri: 'https://picsum.photos/seed/happy/200',
+    heroUri: 'https://picsum.photos/seed/happyhero/800/450',
+  },
+  {
+    id: 2, mood: 'focus',
+    title: 'Produktif di Kampus', date: '2025-10-05',
+    preview: 'Menyelesaikan modul praktikum dan berdiskusi dengan tim. Banyak insight baru...',
+    body: 'Menyelesaikan modul praktikum dan berdiskusi dengan tim. Kemajuan proyek cukup baik: struktur folder sudah rapi dan komponen DiaryCard sudah bisa dipakai ulang.',
+    moodUri: 'https://picsum.photos/seed/focus/200',
+    heroUri: 'https://picsum.photos/seed/focushero/800/450',
+  },
+  {
+    id: 3, mood: 'calm',
+    title: 'Senja di Taman', date: '2025-10-04',
+    preview: 'Menikmati senja sambil membaca buku favorit. Warna langit sangat indah...',
+    body: 'Menikmati senja sambil membaca buku favorit. Warna langit berubah dari jingga ke ungu. Refleksi singkat: kadang istirahat sebentar justru membuat pekerjaan terasa lebih ringan.',
+    moodUri: 'https://picsum.photos/seed/calm/200',
+    heroUri: 'https://picsum.photos/seed/calmhero/800/450',
+  },
+  {
+    // Gambar LOKAL dari assets/moods (Tugas P2)
+    id: 4, mood: 'tired',
+    title: 'Begadang Mengerjakan Tugas', date: '2025-10-03',
+    preview: 'Deadline makin dekat, jadi semalam aku begadang menyelesaikan layout aplikasi...',
+    body: 'Deadline makin dekat, jadi semalam aku begadang menyelesaikan layout aplikasi. Badan terasa lelah, tapi lega karena tampilan sudah mulai terbentuk. Besok harus tidur lebih awal.',
+    moodUri: require('../../assets/moods/tired.png'),
+  },
+  {
+    id: 5, mood: 'excited',
+    title: 'Berhasil Jalankan Expo', date: '2025-10-02',
+    preview: 'Akhirnya aplikasi pertamaku tampil di Expo Go! Rasanya senang sekali...',
+    body: 'Akhirnya aplikasi pertamaku tampil di Expo Go! Awalnya sempat gagal terhubung karena beda jaringan Wi-Fi, tapi setelah dicek ulang semuanya berjalan lancar.',
+    moodUri: 'https://picsum.photos/seed/excited/200',
+    heroUri: 'https://picsum.photos/seed/excitedhero/800/450',
+  },
+  {
+    id: 6, mood: 'happy',
+    title: 'Ngopi Bareng Teman', date: '2025-10-01',
+    preview: 'Sore ini ngobrol santai dengan teman lama sambil menikmati kopi hangat...',
+    body: 'Sore ini ngobrol santai dengan teman lama sambil menikmati kopi hangat. Banyak cerita seru yang dibagikan, dan kami berencana bertemu lagi akhir bulan.',
+    moodUri: require('../../assets/moods/happy.png'),
+  },
+];
+
+const pad = (n) => String(n).padStart(2, '0');
+const todayString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+export default function DiaryListScreen() {
+  const { width } = useWindowDimensions();
+  const twoCols = width >= BREAKPOINTS.tablet;
+
+  const [entries, setEntries] = useState(DATA);
+  const [query, setQuery] = useState('');
+  const [moodFilter, setMoodFilter] = useState(null);
+
+  const [selected, setSelected] = useState(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+
+  const keyForCols = twoCols ? 'grid2' : 'list1';
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return entries.filter((e) => {
+      const moodOk = !moodFilter || e.mood === moodFilter;
+      const textOk = !q || e.title.toLowerCase().includes(q) || e.body.toLowerCase().includes(q);
+      return moodOk && textOk;
+    });
+  }, [entries, query, moodFilter]);
+
+  const openEntry = (item) => {
+    setSelected(item);
+    setDetailVisible(true);
+  };
+
+  const addEntry = ({ title, body, mood }) => {
+    const entry = {
+      id: Date.now(),
+      mood,
+      title,
+      body,
+      date: todayString(),
+      preview: body.length > 90 ? `${body.slice(0, 90)}...` : body,
+    };
+    setEntries((prev) => [entry, ...prev]);
+    setQuery('');
+    setMoodFilter(null);
+  };
+
+  const resetFilter = () => {
+    setQuery('');
+    setMoodFilter(null);
+  };
+
+  const renderItem = ({ item }) => (
+    <View style={[styles.itemWrap, twoCols && styles.itemWrap2]}>
+      <DiaryCard
+        title={item.title}
+        date={item.date}
+        preview={item.preview}
+        moodUri={item.moodUri}
+        mood={item.mood}
+        variant={twoCols ? 'grid' : 'list'}
+        onPress={() => openEntry(item)}
+      />
+    </View>
+  );
+
+  const hasFilter = query.trim() !== '' || moodFilter !== null;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Image
+          source={require('../../assets/avatar.png')}
+          style={styles.avatar}
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel="Foto profil pengguna"
+        />
+        <View>
+          <Text style={styles.header} accessibilityRole="header">Buku Harian</Text>
+          <Text style={styles.subheader}>{entries.length} entri</Text>
+        </View>
+      </View>
+
+      <SearchBar
+        value={query}
+        onChangeText={setQuery}
+        mood={moodFilter}
+        onMoodChange={setMoodFilter}
+        resultCount={filtered.length}
+      />
+
+      <FlatList
+        key={keyForCols}
+        data={filtered}
+        numColumns={twoCols ? 2 : 1}
+        keyExtractor={(it) => String(it.id)}
+        renderItem={renderItem}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        columnWrapperStyle={twoCols ? styles.columnWrapper : undefined}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>
+              {hasFilter ? 'Tidak ada entri yang cocok' : 'Belum ada entri'}
+            </Text>
+            <Text style={styles.empty}>
+              {hasFilter
+                ? 'Coba kata kunci lain atau hapus filter mood.'
+                : 'Ketuk "Tulis entri" untuk membuat catatan pertamamu.'}
+            </Text>
+            {hasFilter && (
+              <Pressable
+                onPress={resetFilter}
+                style={styles.resetBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Hapus pencarian dan filter"
+              >
+                <Text style={styles.resetText}>Hapus filter</Text>
+              </Pressable>
+            )}
+          </View>
+        }
+      />
+
+      <Pressable
+        onPress={() => setFormVisible(true)}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Tulis entri baru"
+      >
+        <Ionicons name="add" size={24} color={COLORS.onAccent} />
+        <Text style={styles.fabText}>Tulis entri</Text>
+      </Pressable>
+
+      <DiaryDetailModal
+        visible={detailVisible}
+        entry={selected}
+        onClose={() => setDetailVisible(false)}
+      />
+      <EntryForm
+        visible={formVisible}
+        onClose={() => setFormVisible(false)}
+        onSubmit={addEntry}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.surface },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.m,
+    paddingHorizontal: SPACE.l,
+    paddingTop: SPACE.l,
+  },
+  avatar: { width: SIZE.avatar, height: SIZE.avatar, borderRadius: RADIUS.avatar },
+  header: { fontSize: TYPO.h1, fontWeight: '700', color: COLORS.text },
+  subheader: { fontSize: TYPO.caption, color: COLORS.muted },
+  columnWrapper: { gap: SPACE.m },
+  listContent: {
+    padding: SPACE.l,
+    paddingTop: SPACE.m,
+    paddingBottom: 96,
+    gap: SPACE.m,
+  },
+  itemWrap: { flex: 1 },
+  itemWrap2: { flex: 1 / 2 },
+  emptyBox: { alignItems: 'center', gap: SPACE.s, marginTop: SPACE.xl },
+  emptyTitle: { fontSize: TYPO.title, fontWeight: '700', color: COLORS.text },
+  empty: { textAlign: 'center', color: COLORS.muted, fontSize: TYPO.body },
+  resetBtn: {
+    minHeight: SIZE.touch,
+    justifyContent: 'center',
+    paddingHorizontal: SPACE.l,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+  },
+  resetText: { color: COLORS.accent, fontWeight: '700', fontSize: TYPO.body },
+  fab: {
+    position: 'absolute',
+    right: SPACE.l,
+    bottom: SPACE.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.s,
+    minHeight: SIZE.touch,
+    paddingHorizontal: SPACE.l,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.accent,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  fabPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
+  fabText: { color: COLORS.onAccent, fontWeight: '700', fontSize: TYPO.title },
+});
+
+// ===== C:\laragon\www\diary-app\src\styles\tokens.js =====
+
+export const COLORS = {
+  surface: '#FFFFFF',
+  onAccent: '#FFFFFF',   // baru
+  border: '#E5E7EB',
+  text: '#111827',
+  muted: '#6B7280',
+  accent: '#2563EB',
+  accentSoft: '#EFF6FF', // baru
+  danger: '#B91C1C',     // baru
+  placeholder: '#EEF2FF',
+};
+
+export const SIZE = { touch: 48, avatar: 48, mood: 64, cardMin: 88, cardMinGrid: 120 }; // baru
+export const OPACITY = { pressed: 0.85 }; // baru
+
+export const SPACE = { xs: 4, s: 8, m: 12, l: 16, xl: 24 };
+export const RADIUS = { card: 12, avatar: 32, pill: 999 };
+export const TYPO = { h1: 24, h2: 20, title: 16, body: 14, caption: 12 };
+export const BREAKPOINTS = { tablet: 600 }; // px
+
+// Variasi tampilan kartu berdasarkan mood (Tugas P2)
+export const MOODS = {
+  happy:   { label: 'Senang',   color: '#15803D' },
+  focus:   { label: 'Fokus',    color: '#1D4ED8' },
+  calm:    { label: 'Tenang',   color: '#6D28D9' },
+  tired:   { label: 'Lelah',    color: '#B45309' },
+  excited: { label: 'Semangat', color: '#BE185D' },
+};
+
+
+// ===== C:\laragon\www\diary-app\src\utils\imageSource.js =====
+
+// Mendukung URL remote (string) maupun gambar lokal (hasil require)
+export const toSource = (img) => (typeof img === 'string' ? { uri: img } : img);
+
+// ===== C:\laragon\www\diary-app\App.js =====
+
+import React from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import DiaryListScreen from './src/screens/DiaryListScreen';
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+        <DiaryListScreen />
+        <StatusBar style="dark" />
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+// ===== C:\laragon\www\diary-app\index.js =====
+
+import { registerRootComponent } from 'expo';
+
+import App from './App';
+
+// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
+// It also ensures that whether you load the app in Expo Go or in a native build,
+// the environment is set up appropriately
+registerRootComponent(App);
